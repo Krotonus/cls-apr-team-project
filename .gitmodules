@@ -1,0 +1,3 @@
+[submodule "KPConv-PyTorch"]
+	path = KPConv-PyTorch
+	url = https://github.com/HuguesTHOMAS/KPConv-PyTorch.git

@@ -366,7 +366,6 @@ class KPConv(nn.Module):
 
         # Apply network weights [n_kpoints, n_points, out_fdim]
         weighted_features = weighted_features.permute((1, 0, 2))
-        
         kernel_outputs = torch.matmul(weighted_features, self.weights)
 
         # Convolution sum [n_points, out_fdim]

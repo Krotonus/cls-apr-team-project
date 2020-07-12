@@ -104,11 +104,20 @@ class CellDataset(PointCloudDataset):
 
         # Proportion of validation scenes
         # Note: Might be filenames of the different tiff files.
-        self.cloud_names = ['t000', 't002', 't006', 't008', 't012', 't013',
+        
+        if self.set == 'test':
+            self.path = './data/Fluo-C3DH-A549/02'
+            self.cloud_names = ['t001', 't006', 't008', 't009', 't011', 't012',
+                                't013', 't014', 't015', 't019', 't020', 't021', 't023',
+                                't024', 't025']
+            self.all_splits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+            self.validation_split = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        else:
+            self.cloud_names = ['t000', 't002', 't006', 't008', 't012', 't013',
                             't014', 't015', 't019', 't022', 't025', 't026',
                             't027', 't028', 't029',]
-        self.all_splits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-        self.validation_split = 7
+            self.all_splits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+            self.validation_split = 7
 
         # Number of models used per epoch
         if self.set == 'training':
@@ -140,7 +149,10 @@ class CellDataset(PointCloudDataset):
             if self.set == 'training':
                 if self.all_splits[i] != self.validation_split:
                     self.files += [self.path + '/' + f + '.tif']
-            elif self.set in ['validation', 'test', 'ERF']:
+            elif self.set == 'test':
+                if self.all_splits[i] in self.validation_split:
+                    self.files += [self.path + '/' + f + '.tif']
+            elif self.set in ['validation', 'ERF']:
                 if self.all_splits[i] == self.validation_split:
                     self.files += [self.path + '/' + f + '.tif']
             else:
@@ -149,7 +161,10 @@ class CellDataset(PointCloudDataset):
         if self.set == 'training':
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
                                 if self.all_splits[i] != self.validation_split]
-        elif self.set in ['validation', 'test', 'ERF']:
+        elif self.set == 'test':
+            self.cloud_names = [f for i, f in enumerate(self.cloud_names)
+                                if self.all_splits[i] in self.validation_split]
+        elif self.set in ['validation', 'ERF']:
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
                                 if self.all_splits[i] == self.validation_split]
 
@@ -709,7 +724,7 @@ class CellDataset(PointCloudDataset):
         ##############
         # Load KDTrees
         ##############
-
+        
         for i, file_path in enumerate(self.files):
 
             # Restart timer
@@ -717,7 +732,6 @@ class CellDataset(PointCloudDataset):
 
             # Get cloud name
             cloud_name = self.cloud_names[i]
-
             # Name of the input files
             KDTree_file = join(tree_path, '{:s}_KDTree.pkl'.format(cloud_name))
             sub_ply_file = join(tree_path, '{:s}.ply'.format(cloud_name))

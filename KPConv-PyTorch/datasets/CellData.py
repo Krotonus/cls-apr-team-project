@@ -215,7 +215,6 @@ class CellDataset(PointCloudDataset):
             self.worker_waiting.share_memory_()
             self.epoch_inds = None
             self.epoch_i = 0
-
         else:
             self.potentials = None
             self.min_potentials = None
@@ -892,6 +891,411 @@ class CellDataset(PointCloudDataset):
 #
 #           Utility classes definition
 #       \********************************/
+
+class CellDataSampler(Sampler):
+    """Sampler for S3DIS"""
+
+    def __init__(self, dataset: CellDataset):
+        Sampler.__init__(self, dataset)
+
+        # Dataset used by the sampler (no copy is made in memory)
+        self.dataset = dataset
+
+        # Number of step per epoch
+        if dataset.set == 'training':
+            self.N = dataset.config.epoch_steps
+        else:
+            self.N = dataset.config.validation_size
+
+        return
+
+    def __iter__(self):
+        """
+        Yield next batch indices here. In this dataset, this is a dummy sampler that yield the index of batch element
+        (input sphere) in epoch instead of the list of point indices
+        """
+
+        if not self.dataset.use_potentials:
+
+            # Initiate current epoch ind
+            self.dataset.epoch_i *= 0
+            self.dataset.epoch_inds *= 0
+
+            # Initiate container for indices
+            all_epoch_inds = np.zeros((2, 0), dtype=np.int32)
+
+            # Number of sphere centers taken per class in each cloud
+            num_centers = self.N * self.dataset.config.batch_num
+            random_pick_n = int(np.ceil(num_centers / (self.dataset.num_clouds * self.dataset.config.num_classes)))
+
+            # Choose random points of each class for each cloud
+            for cloud_ind, cloud_labels in enumerate(self.dataset.input_labels):
+                epoch_indices = np.empty((0,), dtype=np.int32)
+                for label_ind, label in enumerate(self.dataset.label_values):
+                    if label not in self.dataset.ignored_labels:
+                        label_indices = np.where(np.equal(cloud_labels, label))[0]
+                        if len(label_indices) <= random_pick_n:
+                            epoch_indices = np.hstack((epoch_indices, label_indices))
+                        elif len(label_indices) < 50 * random_pick_n:
+                            new_randoms = np.random.choice(label_indices, size=random_pick_n, replace=False)
+                            epoch_indices = np.hstack((epoch_indices, new_randoms.astype(np.int32)))
+                        else:
+                            rand_inds = []
+                            while len(rand_inds) < random_pick_n:
+                                rand_inds = np.unique(np.random.choice(label_indices, size=5 * random_pick_n, replace=True))
+                            epoch_indices = np.hstack((epoch_indices, rand_inds[:random_pick_n].astype(np.int32)))
+
+                # Stack those indices with the cloud index
+                epoch_indices = np.vstack((np.full(epoch_indices.shape, cloud_ind, dtype=np.int32), epoch_indices))
+
+                # Update the global indice container
+                all_epoch_inds = np.hstack((all_epoch_inds, epoch_indices))
+
+            # Random permutation of the indices
+            random_order = np.random.permutation(all_epoch_inds.shape[1])
+            all_epoch_inds = all_epoch_inds[:, random_order].astype(np.int64)
+
+            # Update epoch inds
+            self.dataset.epoch_inds += torch.from_numpy(all_epoch_inds[:, :num_centers])
+
+        # Generator loop
+        for i in range(self.N):
+            yield i
+
+    def __len__(self):
+        """
+        The number of yielded samples is variable
+        """
+        return self.N
+
+    def fast_calib(self):
+        """
+        This method calibrates the batch sizes while ensuring the potentials are well initialized. Indeed on a dataset
+        like Semantic3D, before potential have been updated over the dataset, there are cahnces that all the dense area
+        are picked in the begining and in the end, we will have very large batch of small point clouds
+        :return:
+        """
+
+        # Estimated average batch size and target value
+        estim_b = 0
+        target_b = self.dataset.config.batch_num
+
+        # Calibration parameters
+        low_pass_T = 10
+        Kp = 100.0
+        finer = False
+        breaking = False
+
+        # Convergence parameters
+        smooth_errors = []
+        converge_threshold = 0.1
+
+        t = [time.time()]
+        last_display = time.time()
+        mean_dt = np.zeros(2)
+
+        for epoch in range(10):
+            for i, test in enumerate(self):
+
+                # New time
+                t = t[-1:]
+                t += [time.time()]
+
+                # batch length
+                b = len(test)
+
+                # Update estim_b (low pass filter)
+                estim_b += (b - estim_b) / low_pass_T
+
+                # Estimate error (noisy)
+                error = target_b - b
+
+                # Save smooth errors for convergene check
+                smooth_errors.append(target_b - estim_b)
+                if len(smooth_errors) > 10:
+                    smooth_errors = smooth_errors[1:]
+
+                # Update batch limit with P controller
+                self.dataset.batch_limit += Kp * error
+
+                # finer low pass filter when closing in
+                if not finer and np.abs(estim_b - target_b) < 1:
+                    low_pass_T = 100
+                    finer = True
+
+                # Convergence
+                if finer and np.max(np.abs(smooth_errors)) < converge_threshold:
+                    breaking = True
+                    break
+
+                # Average timing
+                t += [time.time()]
+                mean_dt = 0.9 * mean_dt + 0.1 * (np.array(t[1:]) - np.array(t[:-1]))
+
+                # Console display (only one per second)
+                if (t[-1] - last_display) > 1.0:
+                    last_display = t[-1]
+                    message = 'Step {:5d}  estim_b ={:5.2f} batch_limit ={:7d},  //  {:.1f}ms {:.1f}ms'
+                    print(message.format(i,
+                                         estim_b,
+                                         int(self.dataset.batch_limit),
+                                         1000 * mean_dt[0],
+                                         1000 * mean_dt[1]))
+
+            if breaking:
+                break
+
+    def calibration(self, dataloader, untouched_ratio=0.9, verbose=False, force_redo=False):
+        """
+        Method performing batch and neighbors calibration.
+            Batch calibration: Set "batch_limit" (the maximum number of points allowed in every batch) so that the
+                               average batch size (number of stacked pointclouds) is the one asked.
+        Neighbors calibration: Set the "neighborhood_limits" (the maximum number of neighbors allowed in convolutions)
+                               so that 90% of the neighborhoods remain untouched. There is a limit for each layer.
+        """
+
+        ##############################
+        # Previously saved calibration
+        ##############################
+
+        print('\nStarting Calibration (use verbose=True for more details)')
+        t0 = time.time()
+
+        redo = force_redo
+
+        # Batch limit
+        # ***********
+
+        # Load batch_limit dictionary
+        batch_lim_file = join(self.dataset.path, 'batch_limits.pkl')
+        if exists(batch_lim_file):
+            with open(batch_lim_file, 'rb') as file:
+                batch_lim_dict = pickle.load(file)
+        else:
+            batch_lim_dict = {}
+
+        # Check if the batch limit associated with current parameters exists
+        if self.dataset.use_potentials:
+            sampler_method = 'potentials'
+        else:
+            sampler_method = 'random'
+        key = '{:s}_{:.3f}_{:.3f}_{:d}'.format(sampler_method,
+                                               self.dataset.config.in_radius,
+                                               self.dataset.config.first_subsampling_dl,
+                                               self.dataset.config.batch_num)
+        if not redo and key in batch_lim_dict:
+            self.dataset.batch_limit[0] = batch_lim_dict[key]
+        else:
+            redo = True
+
+        if verbose:
+            print('\nPrevious calibration found:')
+            print('Check batch limit dictionary')
+            if key in batch_lim_dict:
+                color = bcolors.OKGREEN
+                v = str(int(batch_lim_dict[key]))
+            else:
+                color = bcolors.FAIL
+                v = '?'
+            print('{:}\"{:s}\": {:s}{:}'.format(color, key, v, bcolors.ENDC))
+
+        # Neighbors limit
+        # ***************
+
+        # Load neighb_limits dictionary
+        neighb_lim_file = join(self.dataset.path, 'neighbors_limits.pkl')
+        if exists(neighb_lim_file):
+            with open(neighb_lim_file, 'rb') as file:
+                neighb_lim_dict = pickle.load(file)
+        else:
+            neighb_lim_dict = {}
+
+        # Check if the limit associated with current parameters exists (for each layer)
+        neighb_limits = []
+        for layer_ind in range(self.dataset.config.num_layers):
+
+            dl = self.dataset.config.first_subsampling_dl * (2**layer_ind)
+            if self.dataset.config.deform_layers[layer_ind]:
+                r = dl * self.dataset.config.deform_radius
+            else:
+                r = dl * self.dataset.config.conv_radius
+
+            key = '{:.3f}_{:.3f}'.format(dl, r)
+            if key in neighb_lim_dict:
+                neighb_limits += [neighb_lim_dict[key]]
+
+        if not redo and len(neighb_limits) == self.dataset.config.num_layers:
+            self.dataset.neighborhood_limits = neighb_limits
+        else:
+            redo = True
+
+        if verbose:
+            print('Check neighbors limit dictionary')
+            for layer_ind in range(self.dataset.config.num_layers):
+                dl = self.dataset.config.first_subsampling_dl * (2**layer_ind)
+                if self.dataset.config.deform_layers[layer_ind]:
+                    r = dl * self.dataset.config.deform_radius
+                else:
+                    r = dl * self.dataset.config.conv_radius
+                key = '{:.3f}_{:.3f}'.format(dl, r)
+
+                if key in neighb_lim_dict:
+                    color = bcolors.OKGREEN
+                    v = str(neighb_lim_dict[key])
+                else:
+                    color = bcolors.FAIL
+                    v = '?'
+                print('{:}\"{:s}\": {:s}{:}'.format(color, key, v, bcolors.ENDC))
+
+        if redo:
+
+            ############################
+            # Neighbors calib parameters
+            ############################
+
+            # From config parameter, compute higher bound of neighbors number in a neighborhood
+            hist_n = int(np.ceil(4 / 3 * np.pi * (self.dataset.config.deform_radius + 1) ** 3))
+
+            # Histogram of neighborhood sizes
+            neighb_hists = np.zeros((self.dataset.config.num_layers, hist_n), dtype=np.int32)
+
+            ########################
+            # Batch calib parameters
+            ########################
+
+            # Estimated average batch size and target value
+            estim_b = 0
+            target_b = self.dataset.config.batch_num
+
+            # Calibration parameters
+            low_pass_T = 10
+            Kp = 100.0
+            finer = False
+
+            # Convergence parameters
+            smooth_errors = []
+            converge_threshold = 0.1
+
+            # Loop parameters
+            last_display = time.time()
+            i = 0
+            breaking = False
+
+            #####################
+            # Perform calibration
+            #####################
+
+            for epoch in range(10):
+                for batch_i, batch in enumerate(dataloader):
+
+                    # Update neighborhood histogram
+                    counts = [np.sum(neighb_mat.numpy() < neighb_mat.shape[0], axis=1) for neighb_mat in batch.neighbors]
+                    hists = [np.bincount(c, minlength=hist_n)[:hist_n] for c in counts]
+                    neighb_hists += np.vstack(hists)
+
+                    # batch length
+                    b = len(batch.cloud_inds)
+
+                    # Update estim_b (low pass filter)
+                    estim_b += (b - estim_b) / low_pass_T
+
+                    # Estimate error (noisy)
+                    error = target_b - b
+
+                    # Save smooth errors for convergene check
+                    smooth_errors.append(target_b - estim_b)
+                    if len(smooth_errors) > 10:
+                        smooth_errors = smooth_errors[1:]
+
+                    # Update batch limit with P controller
+                    self.dataset.batch_limit += Kp * error
+
+                    # finer low pass filter when closing in
+                    if not finer and np.abs(estim_b - target_b) < 1:
+                        low_pass_T = 100
+                        finer = True
+
+                    # Convergence
+                    if finer and np.max(np.abs(smooth_errors)) < converge_threshold:
+                        breaking = True
+                        break
+
+                    i += 1
+                    t = time.time()
+
+                    # Console display (only one per second)
+                    if verbose and (t - last_display) > 1.0:
+                        last_display = t
+                        message = 'Step {:5d}  estim_b ={:5.2f} batch_limit ={:7d}'
+                        print(message.format(i,
+                                             estim_b,
+                                             int(self.dataset.batch_limit)))
+
+                if breaking:
+                    break
+
+            # Use collected neighbor histogram to get neighbors limit
+            cumsum = np.cumsum(neighb_hists.T, axis=0)
+            percentiles = np.sum(cumsum < (untouched_ratio * cumsum[hist_n - 1, :]), axis=0)
+            self.dataset.neighborhood_limits = percentiles
+
+            if verbose:
+
+                # Crop histogram
+                while np.sum(neighb_hists[:, -1]) == 0:
+                    neighb_hists = neighb_hists[:, :-1]
+                hist_n = neighb_hists.shape[1]
+
+                print('\n**************************************************\n')
+                line0 = 'neighbors_num '
+                for layer in range(neighb_hists.shape[0]):
+                    line0 += '|  layer {:2d}  '.format(layer)
+                print(line0)
+                for neighb_size in range(hist_n):
+                    line0 = '     {:4d}     '.format(neighb_size)
+                    for layer in range(neighb_hists.shape[0]):
+                        if neighb_size > percentiles[layer]:
+                            color = bcolors.FAIL
+                        else:
+                            color = bcolors.OKGREEN
+                        line0 += '|{:}{:10d}{:}  '.format(color,
+                                                         neighb_hists[layer, neighb_size],
+                                                         bcolors.ENDC)
+
+                    print(line0)
+
+                print('\n**************************************************\n')
+                print('\nchosen neighbors limits: ', percentiles)
+                print()
+
+            # Save batch_limit dictionary
+            if self.dataset.use_potentials:
+                sampler_method = 'potentials'
+            else:
+                sampler_method = 'random'
+            key = '{:s}_{:.3f}_{:.3f}_{:d}'.format(sampler_method,
+                                                   self.dataset.config.in_radius,
+                                                   self.dataset.config.first_subsampling_dl,
+                                                   self.dataset.config.batch_num)
+            batch_lim_dict[key] = float(self.dataset.batch_limit)
+            with open(batch_lim_file, 'wb') as file:
+                pickle.dump(batch_lim_dict, file)
+
+            # Save neighb_limit dictionary
+            for layer_ind in range(self.dataset.config.num_layers):
+                dl = self.dataset.config.first_subsampling_dl * (2 ** layer_ind)
+                if self.dataset.config.deform_layers[layer_ind]:
+                    r = dl * self.dataset.config.deform_radius
+                else:
+                    r = dl * self.dataset.config.conv_radius
+                key = '{:.3f}_{:.3f}'.format(dl, r)
+                neighb_lim_dict[key] = self.dataset.neighborhood_limits[layer_ind]
+            with open(neighb_lim_file, 'wb') as file:
+                pickle.dump(neighb_lim_dict, file)
+
+
+        print('Calibration done in {:.1f}s\n'.format(time.time() - t0))
+        return
 
 
 class CellDataCustomBatch:

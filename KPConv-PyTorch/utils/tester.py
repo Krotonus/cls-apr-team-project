@@ -119,7 +119,7 @@ class ModelTester:
             test_path = None
 
         # If on validation directly compute score
-        if test_loader.dataset.set == 'validation':
+        if test_loader.dataset.set == 'test':
             val_proportions = np.zeros(nc_model, dtype=np.float32)
             i = 0
             for label_value in test_loader.dataset.label_values:
@@ -158,7 +158,6 @@ class ModelTester:
 
                 # Forward pass
                 outputs = net(batch, config)
-
                 t += [time.time()]
 
                 # Get probs and labels
@@ -209,17 +208,19 @@ class ModelTester:
 
             # Update minimum od potentials
             new_min = torch.min(test_loader.dataset.min_potentials)
-            print('Test epoch {:d}, end. Min potential = {:.1f}'.format(test_epoch, new_min))
+            print('Test epoch {:d}, end. Min potential = {}'.format(test_epoch, new_min))
             #print([np.mean(pots) for pots in test_loader.dataset.potentials])
 
             # Save predicted cloud
+            
             if last_min + 1 < new_min:
-
+                #Here
+                print("Trying to save predicted cloud..")
                 # Update last_min
                 last_min += 1
 
                 # Show vote results (On subcloud so it is not the good values here)
-                if test_loader.dataset.set == 'validation':
+                if test_loader.dataset.set == 'test':
                     print('\nConfusion on sub clouds')
                     Confs = []
                     for i, file_path in enumerate(test_loader.dataset.files):
@@ -260,6 +261,7 @@ class ModelTester:
                     print(s + '\n')
 
                 # Save real IoU once in a while
+        
                 if int(np.ceil(new_min)) % 10 == 0:
 
                     # Project predictions
@@ -281,7 +283,7 @@ class ModelTester:
                     print('Done in {:.1f} s\n'.format(t2 - t1))
 
                     # Show vote results
-                    if test_loader.dataset.set == 'validation':
+                    if test_loader.dataset.set == 'test':
                         print('Confusion on full clouds')
                         t1 = time.time()
                         Confs = []
@@ -330,7 +332,7 @@ class ModelTester:
 
                         # Get the predicted labels
                         preds = test_loader.dataset.label_values[np.argmax(proj_probs[i], axis=1)].astype(np.int32)
-
+                        print(preds)
                         # Save plys
                         cloud_name = file_path.split('/')[-1]
                         test_name = join(test_path, 'predictions', cloud_name)

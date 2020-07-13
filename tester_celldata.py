@@ -50,7 +50,7 @@ def model_choice(chosen_log):
     # Check if log exists
     if not os.path.exists(chosen_log):
         raise ValueError('The given log does not exists: ' + chosen_log)
-
+    print(chosen_log)
     return chosen_log
 
 
@@ -75,7 +75,7 @@ def test_model(chosen_log):
     chkp_idx = None
 
     # Choose to test on validation or test split
-    on_val = True
+    on_val = False
 
     # Deal with 'last_XXXXXX' choices
     chosen_log = model_choice(chosen_log)
@@ -117,9 +117,9 @@ def test_model(chosen_log):
 
     #config.augment_noise = 0.0001
     #config.augment_symmetries = False
-    #config.batch_num = 3
+    config.batch_num = 1
     #config.in_radius = 4
-    config.validation_size = 200
+    config.validation_size = 100
     config.input_threads = 0
 
     ##############
@@ -150,6 +150,7 @@ def test_model(chosen_log):
         collate_fn = SemanticKittiCollate
     elif config.dataset == 'Fluo-C3DH-A549':
         test_dataset = CellDataset(config, set='test', use_potentials=True)
+        test_sampler = CellDataSampler(test_dataset)
         collate_fn = CellDataCollate
     else:
         raise ValueError('Unsupported dataset : ' + config.dataset)
@@ -158,6 +159,7 @@ def test_model(chosen_log):
     test_loader = DataLoader(test_dataset,
                              batch_size=1,
                              collate_fn=collate_fn,
+                             sampler=test_sampler,
                              num_workers=config.input_threads)
 
     print('\nModel Preparation')

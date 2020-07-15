@@ -196,7 +196,6 @@ def batch_neighbors(queries, supports, q_batches, s_batches, radius):
     :param radius: float32
     :return: neighbors indices
     """
-
     return cpp_neighbors.batch_query(queries, supports, q_batches, s_batches, radius=radius)
 
 

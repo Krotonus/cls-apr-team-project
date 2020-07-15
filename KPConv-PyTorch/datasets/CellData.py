@@ -183,7 +183,6 @@ class CellDataset(PointCloudDataset):
 
         # Start loading
         self.load_subsampled_clouds()
-
         ############################
         # Batch selection parameters
         ############################
@@ -316,12 +315,13 @@ class CellDataset(PointCloudDataset):
 
                 # Center point of input region
                 center_point = pot_points[point_ind, :].reshape(1, -1)
-
+                
                 # Add a small noise to center point
                 if self.set != 'ERF':
                     center_point += np.random.normal(scale=self.config.in_radius / 10, size=center_point.shape)
 
                 # Indices of points in input region
+
                 pot_inds, dists = self.pot_trees[cloud_ind].query_radius(center_point,
                                                                          r=self.config.in_radius,
                                                                          return_distance=True)
@@ -348,7 +348,6 @@ class CellDataset(PointCloudDataset):
             # Indices of points in input region
             input_inds = self.input_trees[cloud_ind].query_radius(center_point,
                                                                   r=self.config.in_radius)[0]
-
             t += [time.time()]
 
             # Number collected
@@ -373,6 +372,8 @@ class CellDataset(PointCloudDataset):
                 input_colors *= 0
 
             # Get original height as additional feature
+            #Here
+            #input_features = np.hstack((input_colors, input_points[:, 2:] + center_point[:, 2:])).astype(np.float32)
             input_features = input_colors.astype(np.float32)#np.hstack((input_colors, input_points[:, 2:] + center_point[:, 2:])).astype(np.float32)
 
             t += [time.time()]
@@ -412,18 +413,20 @@ class CellDataset(PointCloudDataset):
         stack_lengths = np.array([pp.shape[0] for pp in p_list], dtype=np.int32)
         scales = np.array(s_list, dtype=np.float32)
         rots = np.stack(R_list, axis=0)
-
         # Input features
         stacked_features = np.ones_like(stacked_points[:, :1], dtype=np.float32)
         #Edited here
         if self.config.in_features_dim == 1 or self.config.in_features_dim == 2:
             stacked_features = features[:, :1]
+        # if self.config.in_features_dim == 2:
+            # stacked_features = np.hstack((stacked_features, features[:, :1]))
         #Edited here
         elif self.config.in_features_dim == 4:
             stacked_features = np.hstack((stacked_features, features[:, :3]))
         elif self.config.in_features_dim == 5:
             stacked_features = np.hstack((stacked_features, features))
         else:
+            print(self.config.in_features_dim)
             raise ValueError('Only accepted input dimensions are 1, 4 and 7 (without and with XYZ)')
 
         #######################
@@ -746,7 +749,6 @@ class CellDataset(PointCloudDataset):
             intensity = data[:, 3].astype(np.uint8).reshape((-1, 1))
             labels = data[:, 4].astype(np.int32).reshape((-1, 1))
 
-            
             # Subsample cloud
             sub_points, sub_colors, sub_labels = grid_subsampling(points,
                                                                   features=intensity,
@@ -754,8 +756,7 @@ class CellDataset(PointCloudDataset):
                                                                   sampleDl=dl)
 
             # Did not Rescale float color and squeeze label
-            
-            #sub_colors = sub_colors / 255
+            sub_colors = sub_colors / 255
             sub_labels = np.squeeze(sub_labels)
 
             # Get chosen neighborhoods

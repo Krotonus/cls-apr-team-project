@@ -119,7 +119,7 @@ def test_model(chosen_log):
     #config.augment_symmetries = False
     config.batch_num = 1
     #config.in_radius = 4
-    config.validation_size = 100
+    config.validation_size = 10
     config.input_threads = 0
 
     ##############

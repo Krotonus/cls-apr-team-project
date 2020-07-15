@@ -553,7 +553,11 @@ class ModelTrainer:
 
         # Balance with real validation proportions
         C *= np.expand_dims(self.val_proportions / (np.sum(C, axis=1) + 1e-6), 1)
-
+        
+        #Here
+        print("Confusion Matrix")
+        print("****************")
+        print("{}".format(C))
 
         t4 = time.time()
 
@@ -599,6 +603,8 @@ class ModelTrainer:
         t6 = time.time()
 
         # Print instance mean
+        #Here
+        print(IoUs)
         mIoU = 100 * np.mean(IoUs)
         print('{:s} mean IoU = {:.1f}%'.format(config.dataset, mIoU))
 

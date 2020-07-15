@@ -136,6 +136,7 @@ def convert_to_pointcloud(input_array, is_mask = False):
                 else:
                     point_cloud[i, ] = [row_num, col_num, slice_num, input_array[slice_num, row_num, col_num]] 
                 i = i+1
+    
     return point_cloud
 
 def read_tiff(filename, labelname):
@@ -149,9 +150,12 @@ def read_tiff(filename, labelname):
     label_image = imread(labelname)#.astype('uint8')
     label_image = resize_3d_volume(label_image, np.array([IMAGE_DEPTH, IMAGE_WIDTH, IMAGE_HEIGHT]))
     label_point_cloud = convert_to_pointcloud(label_image, is_mask = True)
-    
     point_cloud = np.c_[point_cloud, label_point_cloud]
-    
+    # print(point_cloud.shape)
+    # background_points = point_cloud[point_cloud[:, 4] == 0]
+    # foreground_points = point_cloud[point_cloud[:, 4] == 1]
+    # background_points = background_points[np.random.choice(background_points.shape[0], foreground_points.shape[0], replace=False), :]
+    # point_cloud = np.vstack((foreground_points, background_points))
     return point_cloud
 
 def read_ply(filename, triangular_mesh=False):

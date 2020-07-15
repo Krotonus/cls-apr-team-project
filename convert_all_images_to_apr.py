@@ -44,6 +44,45 @@ def convert_to_apr(fpath):
     # Display the APR
     # pyapr.viewer.parts_viewer(apr, parts)
 
+    # Converting APR into Pointcloud
+    org_dims = apr.org_dims()  # (Ny, Nx, Nz)
+    py_recon = np.empty((org_dims[2], org_dims[1], org_dims[0]), dtype=np.uint16)
+    max_level = apr.level_max()
+
+    apr_it = apr.iterator()
+    
+    v_min = min(parts)
+    v_max = max(parts)
+    point = []
+    for idx, part in enumerate(parts):
+        parts[idx] = int(((parts[idx] - v_min)/(v_max - v_min)) * 255)
+    
+    # loop over levels up to level_max-1
+    for level in range(apr_it.level_min(), apr_it.level_max()):
+
+        step_size = 2 ** (max_level - level)
+
+        for z in range(apr_it.z_num(level)):
+            for x in range(apr_it.x_num(level)):
+                for idx in range(apr_it.begin(level, z, x), apr_it.end()):
+                    y = apr_it.y(idx)  # this is slow
+                    
+                    y_start = y * step_size
+                    x_start = x * step_size
+                    z_start = z * step_size
+                    
+                    point += [[x_start, y_start, z_start, parts[idx]]]
+                    
+    
+    point_cloud = np.array(point)
+
+    # particles at the maximum level coincide with pixels
+    # level = max_level
+    # for z in range(apr_it.z_num(level)):
+        # for x in range(apr_it.x_num(level)):
+            # for idx in range(apr_it.begin(level, z, x), apr_it.end()):
+                # py_recon[z, x, apr_it.y(idx)] = parts[idx]
+
     # Write the resulting APR to file
     print("Writing APR to file ... \n")
     fpath_apr = "./data/temp/"+fpath[-8:-4]+".apr"

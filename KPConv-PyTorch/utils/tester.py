@@ -135,7 +135,7 @@ class ModelTester:
         #####################
 
         test_epoch = 0
-        last_min = -0.5
+        last_min = -1e-8
 
         t = [time.time()]
         last_display = time.time()
@@ -250,8 +250,14 @@ class ModelTester:
                             C = np.delete(C, l_ind, axis=1)
 
                     # Rescale with the right number of point per class
+                    
                     C *= np.expand_dims(val_proportions / (np.sum(C, axis=1) + 1e-6), 1)
-
+                    
+                    #Here
+                    print("Confusion Matrix")
+                    print("****************")
+                    print("{}".format(C))
+                    
                     # Compute IoUs
                     IoUs = IoU_from_confusions(C)
                     mIoU = np.mean(IoUs)

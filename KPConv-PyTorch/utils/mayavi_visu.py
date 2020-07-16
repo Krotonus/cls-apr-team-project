@@ -33,7 +33,7 @@ import time
 import sys
 
 # PLY reader
-from utils.ply import write_ply, read_ply, read_tiff
+from utils.ply import write_ply, read_ply, read_tiff, read_csv
 
 # Configuration class
 from utils.config import Config

@@ -131,3 +131,4 @@ dmypy.json
 /data/
 /results/
 /test/
+/KPConv-PyTorch/cpp_wrappers/

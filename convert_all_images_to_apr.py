@@ -9,9 +9,10 @@ GRAD_TH = 30
 SIGMA_TH = 230
 
 
-def convert_to_apr(fpath):
+def convert_to_apr_point_cloud(fpath_image, fpath_mask):
     
-    img = skio.imread(fpath)
+    img = skio.imread(fpath_image)
+    mask = skio.imread(fpath_mask)
 
     while img.ndim < 3:
         img = np.expand_dims(img, axis=0)
@@ -46,7 +47,7 @@ def convert_to_apr(fpath):
 
     # Converting APR into Pointcloud
     org_dims = apr.org_dims()  # (Ny, Nx, Nz)
-    py_recon = np.empty((org_dims[2], org_dims[1], org_dims[0]), dtype=np.uint16)
+    #py_recon = np.empty((org_dims[2], org_dims[1], org_dims[0]), dtype=np.uint16)
     max_level = apr.level_max()
 
     apr_it = apr.iterator()
@@ -58,7 +59,7 @@ def convert_to_apr(fpath):
         parts[idx] = int(((parts[idx] - v_min)/(v_max - v_min)) * 255)
     
     # loop over levels up to level_max-1
-    for level in range(apr_it.level_min(), apr_it.level_max()):
+    for level in range(apr_it.level_min(), apr_it.level_max()+1):
 
         step_size = 2 ** (max_level - level)
 
@@ -71,42 +72,36 @@ def convert_to_apr(fpath):
                     x_start = x * step_size
                     z_start = z * step_size
                     
-                    point += [[x_start, y_start, z_start, parts[idx]]]
+                    point += [[x_start, y_start, z_start, parts[idx], mask[z_start, x_start, y_start]]]
                     
-    
     point_cloud = np.array(point)
 
-    # particles at the maximum level coincide with pixels
-    # level = max_level
-    # for z in range(apr_it.z_num(level)):
-        # for x in range(apr_it.x_num(level)):
-            # for idx in range(apr_it.begin(level, z, x), apr_it.end()):
-                # py_recon[z, x, apr_it.y(idx)] = parts[idx]
 
     # Write the resulting APR to file
-    print("Writing APR to file ... \n")
-    fpath_apr = "./data/temp/"+fpath[-8:-4]+".apr"
+    print("Writing Point Cloud to file ... \n")
+    fpath_pointcloud = "./data/APRPointCloud/"+fpath_image[-8:-4]+".txt"
+    np.savetxt(fpath_pointcloud, point_cloud, delimiter = ',')
+    
+    # # Initialize APRFile for I/O
+    # aprfile = pyapr.io.APRFile()
+    # aprfile.set_read_write_tree(True)
 
-    # Initialize APRFile for I/O
-    aprfile = pyapr.io.APRFile()
-    aprfile.set_read_write_tree(True)
+    # # Write APR and particles to file
+    # aprfile.open(fpath_apr, 'WRITE')
+    # aprfile.write_apr(apr)
+    # aprfile.write_particles('particles', parts)
 
-    # Write APR and particles to file
-    aprfile.open(fpath_apr, 'WRITE')
-    aprfile.write_apr(apr)
-    aprfile.write_particles('particles', parts)
+    # # Compute compression and computational ratios
+    # file_sz = aprfile.current_file_size_MB()
+    # print("APR File Size: {:7.2f} MB \n".format(file_sz))
+    # print("Total number of particles: {}".format(apr.total_number_particles()))
+    # mcr = os.path.getsize(fpath_image) * 1e-6 / file_sz
+    # cr = img.size/apr.total_number_particles()
 
-    # Compute compression and computational ratios
-    file_sz = aprfile.current_file_size_MB()
-    print("APR File Size: {:7.2f} MB \n".format(file_sz))
-    print("Total number of particles: {}".format(apr.total_number_particles()))
-    mcr = os.path.getsize(fpath) * 1e-6 / file_sz
-    cr = img.size/apr.total_number_particles()
+    # print("Memory Compression Ratio: {:7.2f}".format(mcr))
+    # print("Compuational Ratio: {:7.2f}".format(cr))
 
-    print("Memory Compression Ratio: {:7.2f}".format(mcr))
-    print("Compuational Ratio: {:7.2f}".format(cr))
-
-    aprfile.close()
+    # aprfile.close()
 
     return 0
 
@@ -116,16 +111,16 @@ def main():
     DATA_ROOT_DIR = "./data/Fluo-C3DH-A549/01"
     
     #Ensure the temp folder is empty before converting images
-    filelist = glob('./data/temp/*')
+    filelist = glob('./data/APRPointCloud/*')
     for f in filelist:
         os.remove(f)
     
     # Read in the images
     image_paths_with_masks = glob(DATA_ROOT_DIR + '_GT/SEG/*.tif')
-    for idx, images in enumerate(image_paths_with_masks):
+    for idx, mask_image_path in enumerate(image_paths_with_masks):
         image_path = DATA_ROOT_DIR + '/t{}'.format(image_paths_with_masks[idx][-7:-4] + '.tif')
         print("Converting the image {} to APR format.. ".format(image_path))
-        convert_to_apr(image_path)
+        convert_to_apr_point_cloud(image_path, mask_image_path)
 
     print("Done. \n")
 

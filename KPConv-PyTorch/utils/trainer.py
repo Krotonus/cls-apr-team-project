@@ -537,6 +537,8 @@ class ModelTrainer:
             preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
 
             # Confusions
+            #Here
+            #print("truth = {}, probs = {}".format(truth, probs))
             Confs[i, :, :] = fast_confusion(truth, preds, val_loader.dataset.label_values).astype(np.int32)
 
 

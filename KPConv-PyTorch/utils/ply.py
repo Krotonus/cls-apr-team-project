@@ -157,6 +157,11 @@ def read_tiff(filename, labelname):
     # background_points = background_points[np.random.choice(background_points.shape[0], foreground_points.shape[0], replace=False), :]
     # point_cloud = np.vstack((foreground_points, background_points))
     return point_cloud
+    
+def read_csv(filename):
+    point_cloud = np.loadtxt(filename, delimiter = ',')
+    print("Shape of the loaded point cloud = {}".format(point_cloud.shape))
+    return point_cloud
 
 def read_ply(filename, triangular_mesh=False):
     """

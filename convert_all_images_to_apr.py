@@ -79,7 +79,7 @@ def convert_to_apr_point_cloud(fpath_image, fpath_mask):
 
     # Write the resulting APR to file
     print("Writing Point Cloud to file ... \n")
-    fpath_pointcloud = "./data/APRPointCloud/"+fpath_image[-8:-4]+".txt"
+    fpath_pointcloud = "./data/APRPointCloud/test/"+fpath_image[-8:-4]+".txt"
     np.savetxt(fpath_pointcloud, point_cloud, delimiter = ',')
     
     # # Initialize APRFile for I/O
@@ -108,10 +108,10 @@ def convert_to_apr_point_cloud(fpath_image, fpath_mask):
 
 def main():
     
-    DATA_ROOT_DIR = "./data/Fluo-C3DH-A549/01"
+    DATA_ROOT_DIR = "./data/Fluo-C3DH-A549/02"
     
     #Ensure the temp folder is empty before converting images
-    filelist = glob('./data/APRPointCloud/*')
+    filelist = glob('./data/APRPointCloud/test/*')
     for f in filelist:
         os.remove(f)
     

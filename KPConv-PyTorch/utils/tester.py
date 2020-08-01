@@ -80,7 +80,248 @@ class ModelTester:
 
     # Test main methods
     # ------------------------------------------------------------------------------------------------------------------
+    def cloud_segmentation_predict(self, net, val_loader, config, debug=False):
+        """
+        Validation method for cloud segmentation models
+        """
 
+        ############
+        # Initialize
+        ############
+
+        t0 = time.time()
+        # Choose validation smoothing parameter (0 for no smothing, 0.99 for big smoothing)
+        val_smooth = 0.95
+        softmax = torch.nn.Softmax(1)
+
+        # Do not validate if dataset has no validation cloud
+        # if val_loader.dataset.validation_split not in val_loader.dataset.all_splits:
+            # return
+
+        # Number of classes including ignored labels
+        nc_tot = val_loader.dataset.num_classes
+
+        # Number of classes predicted by the model
+        nc_model = config.num_classes
+
+        #print(nc_tot)
+        #print(nc_model)
+
+        # Initiate global prediction over validation clouds
+        if not hasattr(self, 'validation_probs'):
+            self.validation_probs = [np.zeros((l.shape[0], nc_model))
+                                     for l in val_loader.dataset.input_labels]
+            self.val_proportions = np.zeros(nc_model, dtype=np.float32)
+            i = 0
+            for label_value in val_loader.dataset.label_values:
+                if label_value not in val_loader.dataset.ignored_labels:
+                    self.val_proportions[i] = np.sum([np.sum(labels == label_value)
+                                                      for labels in val_loader.dataset.validation_labels])
+                    i += 1
+
+        #####################
+        # Network predictions
+        #####################
+
+        predictions = []
+        targets = []
+
+        t = [time.time()]
+        last_display = time.time()
+        mean_dt = np.zeros(1)
+
+
+        t1 = time.time()
+        # Start prediction loop
+        net.eval()
+        for i, batch in enumerate(val_loader):
+
+            # New time
+            t = t[-1:]
+            t += [time.time()]
+
+            if 'cuda' in self.device.type:
+                batch.to(self.device)
+
+            # Forward pass
+            outputs = net(batch, config)
+
+            # Get probs and labels
+            stacked_probs = softmax(outputs).cpu().detach().numpy()
+            labels = batch.labels.cpu().numpy()
+            lengths = batch.lengths[0].cpu().numpy()
+            in_inds = batch.input_inds.cpu().numpy()
+            cloud_inds = batch.cloud_inds.cpu().numpy()
+            torch.cuda.synchronize(self.device)
+
+            # Get predictions and labels per instance
+            # ***************************************
+
+            i0 = 0
+            for b_i, length in enumerate(lengths):
+
+                # Get prediction
+                target = labels[i0:i0 + length]
+                probs = stacked_probs[i0:i0 + length]
+                inds = in_inds[i0:i0 + length]
+                c_i = cloud_inds[b_i]
+
+                # Update current probs in whole cloud
+                self.validation_probs[c_i][inds] = val_smooth * self.validation_probs[c_i][inds] \
+                                                   + (1 - val_smooth) * probs
+
+                # Stack all prediction for this epoch
+                predictions.append(probs)
+                targets.append(target.astype(np.int64))
+                i0 += length
+
+            # Average timing
+            t += [time.time()]
+            mean_dt = 0.95 * mean_dt + 0.05 * (np.array(t[1:]) - np.array(t[:-1]))
+
+            # Display
+            if (t[-1] - last_display) > 1.0:
+                last_display = t[-1]
+                message = 'Validation : {:.1f}% (timings : {:4.2f} {:4.2f})'
+                print(message.format(100 * i / config.validation_size,
+                                     1000 * (mean_dt[0]),
+                                     1000 * (mean_dt[1])))
+
+        t2 = time.time()
+
+        # Confusions for our subparts of validation set
+        Confs = np.zeros((len(predictions), nc_tot, nc_tot), dtype=np.int32)
+        for i, (probs, truth) in enumerate(zip(predictions, targets)):
+
+            # Insert false columns for ignored labels
+            for l_ind, label_value in enumerate(val_loader.dataset.label_values):
+                if label_value in val_loader.dataset.ignored_labels:
+                    probs = np.insert(probs, l_ind, 0, axis=1)
+
+            # Predicted labels
+            preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
+
+            # Confusions
+            #Here
+            #print("Truth = {}, Predictions = {}, Label Values = {}".format(truth.dtype, preds.dtype, val_loader.dataset.label_values))
+            Confs[i, :, :] = fast_confusion(truth, preds, val_loader.dataset.label_values).astype(np.int32)
+
+
+        t3 = time.time()
+
+        # Sum all confusions
+        C = np.sum(Confs, axis=0).astype(np.float32)
+
+        # Remove ignored labels from confusions
+        for l_ind, label_value in reversed(list(enumerate(val_loader.dataset.label_values))):
+            if label_value in val_loader.dataset.ignored_labels:
+                C = np.delete(C, l_ind, axis=0)
+                C = np.delete(C, l_ind, axis=1)
+
+        # Balance with real validation proportions
+        C *= np.expand_dims(self.val_proportions / (np.sum(C, axis=1) + 1e-6), 1)
+
+
+        t4 = time.time()
+
+        # Objects IoU
+        IoUs = IoU_from_confusions(C)
+
+        t5 = time.time()
+
+        # Saving (optionnal)
+        if config.saving:
+
+            # Name of saving file
+            test_file = join(config.saving_path, 'test_IoUs.txt')
+            print(test_file)
+
+            # Line to write:
+            line = ''
+            for IoU in IoUs:
+                line += '{:.3f} '.format(IoU)
+            line = line + '\n'
+
+            # Write in file
+            if exists(test_file):
+                with open(test_file, "a") as text_file:
+                    text_file.write(line)
+            else:
+                with open(test_file, "w") as text_file:
+                    text_file.write(line)
+
+            # Save potentials
+            pot_path = join(config.saving_path, 'potentials')
+            if not exists(pot_path):
+                makedirs(pot_path)
+            files = val_loader.dataset.files
+            for i, file_path in enumerate(files):
+                pot_points = np.array(val_loader.dataset.pot_trees[i].data, copy=False)
+                cloud_name = file_path.split('/')[-1]
+                pot_name = join(pot_path, cloud_name)
+                pots = val_loader.dataset.potentials[i].numpy().astype(np.float32)
+                write_ply(pot_name,
+                          [pot_points.astype(np.float32), pots],
+                          ['x', 'y', 'z', 'pots'])
+
+        t6 = time.time()
+
+        # Print instance mean
+        mIoU = 100 * np.mean(IoUs)
+        print('{:s} mean IoU = {:.1f}%'.format(config.dataset, mIoU))
+
+        # Save predicted cloud occasionally
+        if config.saving:
+            val_path = join(config.saving_path, 'val_preds_{:d}'.format(self.epoch + 1))
+            if not exists(val_path):
+                makedirs(val_path)
+            files = val_loader.dataset.files
+            for i, file_path in enumerate(files):
+
+                # Get points
+                points = val_loader.dataset.load_evaluation_points(file_path)
+
+                # Get probs on our own ply points
+                sub_probs = self.validation_probs[i]
+
+                # Insert false columns for ignored labels
+                for l_ind, label_value in enumerate(val_loader.dataset.label_values):
+                    if label_value in val_loader.dataset.ignored_labels:
+                        sub_probs = np.insert(sub_probs, l_ind, 0, axis=1)
+
+                # Get the predicted labels
+                sub_preds = val_loader.dataset.label_values[np.argmax(sub_probs, axis=1).astype(np.int32)]
+
+                # Reproject preds on the evaluations points
+                preds = (sub_preds[val_loader.dataset.test_proj[i]]).astype(np.int32)
+
+                # Path of saved validation file
+                cloud_name = file_path.split('/')[-1]
+                val_name = join(val_path, cloud_name)
+
+                # Save file
+                labels = val_loader.dataset.validation_labels[i].astype(np.int32)
+                write_ply(val_name,
+                          [points, preds, labels],
+                          ['x', 'y', 'z', 'preds', 'class'])
+
+        # Display timings
+        t7 = time.time()
+        net.train()
+        if debug:
+            print('\n************************\n')
+            print('Validation timings:')
+            print('Init ...... {:.1f}s'.format(t1 - t0))
+            print('Loop ...... {:.1f}s'.format(t2 - t1))
+            print('Confs ..... {:.1f}s'.format(t3 - t2))
+            print('Confs bis . {:.1f}s'.format(t4 - t3))
+            print('IoU ....... {:.1f}s'.format(t5 - t4))
+            print('Save1 ..... {:.1f}s'.format(t6 - t5))
+            print('Save2 ..... {:.1f}s'.format(t7 - t6))
+            print('\n************************\n')
+
+        return
+        
     def cloud_segmentation_test(self, net, test_loader, config, num_votes=100, debug=False):
         """
         Test method for cloud segmentation models
@@ -135,7 +376,7 @@ class ModelTester:
         #####################
 
         test_epoch = 0
-        last_min = -1e-8
+        last_min = -0.5
 
         t = [time.time()]
         last_display = time.time()
@@ -268,7 +509,7 @@ class ModelTester:
 
                 # Save real IoU once in a while
         
-                if int(np.ceil(new_min)) % 10 == 0:
+                if True:
 
                     # Project predictions
                     print('\nReproject Vote #{:d}'.format(int(np.floor(new_min))))

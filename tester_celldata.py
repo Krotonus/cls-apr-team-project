@@ -7,7 +7,7 @@ sys.path.append('./KPConv-PyTorch/')
 import torch
 
 # Dataset
-from datasets.CellData import *
+from datasets.APRPointCloud import *
 from torch.utils.data import DataLoader
 
 from utils.config import Config
@@ -117,10 +117,11 @@ def test_model(chosen_log):
 
     #config.augment_noise = 0.0001
     #config.augment_symmetries = False
-    config.batch_num = 1
+    # config.batch_num = 1
     #config.in_radius = 4
-    config.validation_size = 10
+    config.validation_size = 200
     config.input_threads = 0
+    config.saving_path = "./test_results"
 
     ##############
     # Prepare Data
@@ -152,6 +153,10 @@ def test_model(chosen_log):
         test_dataset = CellDataset(config, set='test', use_potentials=True)
         test_sampler = CellDataSampler(test_dataset)
         collate_fn = CellDataCollate
+    elif config.dataset == 'APRPointCloud':
+        test_dataset = APRPointCloudDataset(config, set='test', use_potentials=True)
+        test_sampler = APRPointCloudSampler(test_dataset)
+        collate_fn = APRPointCloudCollate
     else:
         raise ValueError('Unsupported dataset : ' + config.dataset)
 
@@ -178,7 +183,7 @@ def test_model(chosen_log):
     tester = ModelTester(net, chkp_path=chosen_chkp)
     print('Done in {:.1f}s\n'.format(time.time() - t1))
 
-    print('\nStart test')
+    print('\nStart Prediction')
     print('**********\n')
 
     # Training
@@ -190,3 +195,6 @@ def test_model(chosen_log):
         tester.slam_segmentation_test(net, test_loader, config)
     else:
         raise ValueError('Unsupported dataset_task for testing: ' + config.dataset_task)
+        
+    print('\nEnd Prediction')
+    print('**********\n')

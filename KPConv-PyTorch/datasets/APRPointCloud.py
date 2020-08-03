@@ -60,7 +60,7 @@ class APRPointCloudDataset(PointCloudDataset):
         """
         This dataset is small enough to be stored in-memory, so load all point clouds here
         """
-        PointCloudDataset.__init__(self, 'S3DIS')
+        PointCloudDataset.__init__(self, 'APRPointCloud')
 
         ############
         # Parameters
@@ -77,7 +77,7 @@ class APRPointCloudDataset(PointCloudDataset):
         self.ignored_labels = np.array([])
 
         # Dataset folder
-        self.path = './data/APRPointCloud'
+        self.path = './data/APRPointCloud/train'
 
         # Type of task conducted on this dataset
         self.dataset_task = 'cloud_segmentation'
@@ -99,18 +99,18 @@ class APRPointCloudDataset(PointCloudDataset):
         # Note: Might be filenames of the different tiff files.
         
         if self.set == 'test':
-            self.path = './data/Fluo-C3DH-A549/02'
-            self.cloud_names = ['t001', 't006', 't008', 't009', 't011', 't012',
-                                't013', 't014', 't015', 't019', 't020', 't021', 't023',
-                                't024', 't025']
-            self.all_splits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-            self.validation_split = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+            self.path = './data/APRPointCloud/test'
+            self.cloud_names = ['t006', 't009', 't012',
+                                't014', 't019', 't021', 
+                                't024']
+            self.all_splits = [0, 1, 2, 3, 4, 5, 6]
+            self.validation_split = [0, 1, 2, 3, 4, 5, 6]
         else:
-            self.cloud_names = ['t000', 't002', 't006', 't008', 't012', 't013',
-                            't014', 't015', 't019', 't022', 't025', 't026',
+            self.cloud_names = ['t000', 't001_2', 't002', 't006', 't008','t008_2','t011_2', 't012', 't013', 't013_2',
+                            't014', 't015', 't015_2', 't019', 't020_2', 't022', 't023_2', 't025', 't025_2', 't026',
                             't027', 't028', 't029',]
-            self.all_splits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-            self.validation_split = 1
+            self.all_splits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+            self.validation_split = 12
 
         # Number of models used per epoch
         if self.set == 'training':
@@ -143,7 +143,7 @@ class APRPointCloudDataset(PointCloudDataset):
                 if self.all_splits[i] != self.validation_split:
                     self.files += [self.path + '/' + f + '.txt']
             elif self.set == 'test':
-                if self.all_splits[i] in self.validation_split:
+                if self.all_splits[i] == self.validation_split:
                     self.files += [self.path + '/' + f + '.txt']
             elif self.set in ['validation', 'ERF']:
                 if self.all_splits[i] == self.validation_split:
@@ -156,7 +156,7 @@ class APRPointCloudDataset(PointCloudDataset):
                                 if self.all_splits[i] != self.validation_split]
         elif self.set == 'test':
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
-                                if self.all_splits[i] in self.validation_split]
+                                if self.all_splits[i] == self.validation_split]
         elif self.set in ['validation', 'ERF']:
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
                                 if self.all_splits[i] == self.validation_split]

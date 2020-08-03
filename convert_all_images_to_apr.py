@@ -79,7 +79,9 @@ def convert_to_apr_point_cloud(fpath_image, fpath_mask):
 
     # Write the resulting APR to file
     print("Writing Point Cloud to file ... \n")
-    fpath_pointcloud = "./data/APRPointCloud/test/"+fpath_image[-8:-4]+".txt"
+    start_idx = 8
+    if "_2" in fpath_image : start_idx = start_idx + 2
+    fpath_pointcloud = "./data/APRPointCloud/test/"+fpath_image[-start_idx:-4]+".txt"
     np.savetxt(fpath_pointcloud, point_cloud, delimiter = ',')
     
     # # Initialize APRFile for I/O
@@ -118,7 +120,9 @@ def main():
     # Read in the images
     image_paths_with_masks = glob(DATA_ROOT_DIR + '_GT/SEG/*.tif')
     for idx, mask_image_path in enumerate(image_paths_with_masks):
-        image_path = DATA_ROOT_DIR + '/t{}'.format(image_paths_with_masks[idx][-7:-4] + '.tif')
+        start_idx = 7
+        if "_2" in mask_image_path: start_idx = start_idx + 2
+        image_path = DATA_ROOT_DIR + '/t{}'.format(image_paths_with_masks[idx][-start_idx:-4] + '.tif')
         print("Converting the image {} to APR format.. ".format(image_path))
         convert_to_apr_point_cloud(image_path, mask_image_path)
 

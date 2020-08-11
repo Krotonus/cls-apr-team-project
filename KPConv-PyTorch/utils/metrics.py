@@ -50,6 +50,7 @@ def fast_confusion(true, pred, label_values=None):
         true = np.array(in_true)
         pred = np.array(in_pred)
     if len(true.shape) != 1:
+        print("True = {}, Pred = {}".format(true, pred))
         raise ValueError('Truth values are stored in a {:d}D array instead of 1D array. Shape = {}'. format(len(true.shape), true.shape))
     if len(pred.shape) != 1:
         raise ValueError('Prediction values are stored in a {:d}D array instead of 1D array'. format(len(pred.shape)))

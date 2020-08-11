@@ -28,6 +28,12 @@ import numpy as np
 import sys
 sys.path.append('./KPConv-PyTorch/')
 import matplotlib.pyplot as plt
+
+plt.rcParams.update({'font.size': 14,
+                     'font.weight': 'bold',
+                     'axes.labelsize': 16,
+                     'axes.labelweight': 'bold'})
+
 from os.path import isfile, join, exists
 from os import listdir, remove, getcwd
 from sklearn.metrics import confusion_matrix
@@ -43,6 +49,7 @@ from datasets.ModelNet40 import ModelNet40Dataset
 from datasets.S3DIS import S3DISDataset
 from datasets.SemanticKitti import SemanticKittiDataset
 from datasets.APRPointCloud import APRPointCloudDataset
+from datasets.CellData import CellDataset
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -203,7 +210,6 @@ def compare_trainings(list_of_paths, list_of_labels=None):
 
     # Parameters
     # **********
-
     plot_lr = False
     smooth_epochs = 0.5
     stride = 2
@@ -300,7 +306,7 @@ def compare_trainings(list_of_paths, list_of_labels=None):
 
     # Display legends and title
     plt.legend(loc=1)
-    plt.title('Losses compare')
+    #plt.title('Losses compare')
 
     # Customize the graph
     ax = fig.gca()
@@ -317,7 +323,7 @@ def compare_trainings(list_of_paths, list_of_labels=None):
 
     # Set names for axes
     plt.xlabel('epochs')
-    plt.ylabel('time')
+    plt.ylabel('time (hours)')
     # plt.yscale('log')
 
     # Display legends and title
@@ -327,7 +333,7 @@ def compare_trainings(list_of_paths, list_of_labels=None):
     ax = fig.gca()
     ax.grid(linestyle='-.', which='both')
     # ax.set_yticks(np.arange(0.8, 1.02, 0.02))
-
+    plt.rc('axes', labelsize = 12)
     # Show all
     plt.show()
 
@@ -383,21 +389,21 @@ def compare_convergences_segment(dataset, list_of_paths, list_of_names=None):
         print(s)
 
         # Get optional full validation on clouds
-        snap_epochs, snap_IoUs = load_snap_clouds(path, dataset)
-        all_snap_epochs += [snap_epochs]
-        all_snap_IoUs += [snap_IoUs]
+        # snap_epochs, snap_IoUs = load_snap_clouds(path, dataset)
+        # all_snap_epochs += [snap_epochs]
+        # all_snap_IoUs += [snap_IoUs]
 
-    print(10*'-' + '|' + 10*config.num_classes*'-')
-    for snap_IoUs in all_snap_IoUs:
-        if len(snap_IoUs) > 0:
-            s = '{:^10.1f}|'.format(100*np.mean(snap_IoUs[-1]))
-            for IoU in snap_IoUs[-1]:
-                s += '{:^10.1f}'.format(100*IoU)
-        else:
-            s = '{:^10s}'.format('-')
-            for _ in range(config.num_classes):
-                s += '{:^10s}'.format('-')
-        print(s)
+    # print(10*'-' + '|' + 10*config.num_classes*'-')
+    # for snap_IoUs in all_snap_IoUs:
+        # if len(snap_IoUs) > 0:
+            # s = '{:^10.1f}|'.format(100*np.mean(snap_IoUs[-1]))
+            # for IoU in snap_IoUs[-1]:
+                # s += '{:^10.1f}'.format(100*IoU)
+        # else:
+            # s = '{:^10s}'.format('-')
+            # for _ in range(config.num_classes):
+                # s += '{:^10s}'.format('-')
+        # print(s)
 
     # Plots
     # *****
@@ -406,7 +412,7 @@ def compare_convergences_segment(dataset, list_of_paths, list_of_names=None):
     fig = plt.figure('mIoUs')
     for i, name in enumerate(list_of_names):
         p = plt.plot(all_pred_epochs[i], all_mIoUs[i], '--', linewidth=1, label=name)
-        plt.plot(all_snap_epochs[i], np.mean(all_snap_IoUs[i], axis=1), linewidth=1, color=p[-1].get_color())
+        # plt.plot(all_snap_epochs[i], np.mean(all_snap_IoUs[i], axis=1), linewidth=1, color=p[-1].get_color())
     plt.xlabel('epochs')
     plt.ylabel('IoU')
 
@@ -700,8 +706,8 @@ def experiment_name_1():
     """
 
     # Using the dates of the logs, you can easily gather consecutive ones. All logs should be of the same dataset.
-    start = 'Log_2020-07-16_10-30-51'
-    end = 'Log_2020-07-16_10-30-51'
+    start = 'Log_2020-08-01_11-24-38'
+    end = 'Log_2020-08-02_19-30-59'
 
     # Name of the result path
     res_path = 'results'
@@ -710,9 +716,11 @@ def experiment_name_1():
     logs = np.sort([join(res_path, l) for l in listdir(res_path) if start <= l <= end])
 
     # Give names to the logs (for plot legends)
-    logs_names = ['name_log_1',
-                  'name_log_2',
-                  'name_log_3']
+    logs_names = ['Trial 1',
+                  'Trail 2',
+                  'Trial 3',
+                  'Trial 4',
+                  'Trial 5']
 
     # safe check log names
     logs_names = np.array(logs_names[:len(logs)])
@@ -729,8 +737,8 @@ def experiment_name_2():
     """
 
     # Using the dates of the logs, you can easily gather consecutive ones. All logs should be of the same dataset.
-    start = 'Log_2020-04-22_11-52-58'
-    end = 'Log_2020-05-22_11-52-58'
+    start = 'Log_2020-08-03_11-15-24'
+    end = 'Log_2020-08-04_16-54-37'
 
     # Name of the result path
     res_path = 'results'
@@ -739,14 +747,15 @@ def experiment_name_2():
     logs = np.sort([join(res_path, l) for l in listdir(res_path) if start <= l <= end])
 
     # Optionally add a specific log at a specific place in the log list
-    logs = logs.astype('<U50')
-    logs = np.insert(logs, 0, 'results/Log_2020-04-04_10-04-42')
+    # logs = logs.astype('<U50')
+    # logs = np.insert(logs, 0, 'results/Log_2020-04-04_10-04-42')
 
     # Give names to the logs (for plot legends)
-    logs_names = ['name_log_inserted',
-                  'name_log_1',
-                  'name_log_2',
-                  'name_log_3']
+    logs_names = ['Trial 1',
+                  'Trail 2',
+                  'Trial 3',
+                  'Trial 4',
+                  'Trial 5']
 
     # safe check log names
     logs_names = np.array(logs_names[:len(logs)])
@@ -767,7 +776,7 @@ if __name__ == '__main__':
     ######################################################
 
     # My logs: choose the logs to show
-    logs, logs_names = experiment_name_1()
+    logs, logs_names = experiment_name_2()
 
     ################
     # Plot functions
@@ -803,6 +812,9 @@ if __name__ == '__main__':
             compare_convergences_segment(dataset, logs, logs_names)
         if config.dataset == 'APRPointCloud':
             dataset = APRPointCloudDataset(config)
+            compare_convergences_segment(dataset, logs, logs_names)
+        if config.dataset == 'Fluo-C3DH-A549':
+            dataset = CellDataset(config)
             compare_convergences_segment(dataset, logs, logs_names)
     elif config.dataset_task == 'slam_segmentation':
         if config.dataset.startswith('SemanticKitti'):

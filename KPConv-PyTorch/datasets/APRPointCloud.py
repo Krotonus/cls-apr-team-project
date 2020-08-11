@@ -143,20 +143,20 @@ class APRPointCloudDataset(PointCloudDataset):
                 if self.all_splits[i] != self.validation_split:
                     self.files += [self.path + '/' + f + '.txt']
             elif self.set == 'test':
-                if self.all_splits[i] == self.validation_split:
+                if self.all_splits[i] in self.validation_split:
                     self.files += [self.path + '/' + f + '.txt']
             elif self.set in ['validation', 'ERF']:
                 if self.all_splits[i] == self.validation_split:
                     self.files += [self.path + '/' + f + '.txt']
             else:
                 raise ValueError('Unknown set for APRPointCloud data: ', self.set)
-
+        print(self.files)
         if self.set == 'training':
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
                                 if self.all_splits[i] != self.validation_split]
         elif self.set == 'test':
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
-                                if self.all_splits[i] == self.validation_split]
+                                if self.all_splits[i] in self.validation_split]
         elif self.set in ['validation', 'ERF']:
             self.cloud_names = [f for i, f in enumerate(self.cloud_names)
                                 if self.all_splits[i] == self.validation_split]
@@ -176,6 +176,7 @@ class APRPointCloudDataset(PointCloudDataset):
 
         # Start loading
         self.load_subsampled_clouds()
+
         ############################
         # Batch selection parameters
         ############################
@@ -707,7 +708,6 @@ class APRPointCloudDataset(PointCloudDataset):
 
         # Parameter
         dl = self.config.first_subsampling_dl
-
         # Create path for files
         tree_path = join(self.path, 'input_{:.3f}'.format(dl))
         if not exists(tree_path):
@@ -716,7 +716,6 @@ class APRPointCloudDataset(PointCloudDataset):
         ##############
         # Load KDTrees
         ##############
-        
         for i, file_path in enumerate(self.files):
 
             # Restart timer

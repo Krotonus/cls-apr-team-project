@@ -171,16 +171,13 @@ static PyObject* batch_neighbors(PyObject* self, PyObject* args, PyObject* keywd
 	}
 
 	// Number of points
-	printf("Number of points");
 	int Nq = (int)PyArray_DIM(queries_array, 0);
 	int Ns= (int)PyArray_DIM(supports_array, 0);
-	printf("Simple Hello");
 	// Number of batches
 	int Nb = (int)PyArray_DIM(q_batches_array, 0);
 
 	// Call the C++ function
 	// *********************
-	printf("Hello before calc neighbors");
 	// Convert PyArray to Cloud C++ class
 	vector<PointXYZ> queries;
 	vector<PointXYZ> supports;
@@ -197,7 +194,6 @@ static PyObject* batch_neighbors(PyObject* self, PyObject* args, PyObject* keywd
 	// Compute results
 	//batch_ordered_neighbors(queries, supports, q_batches, s_batches, neighbors_indices, radius);
 	batch_nanoflann_neighbors(queries, supports, q_batches, s_batches, neighbors_indices, radius);
-	printf("Hello after calc neighbors");
 	// Check result
 	if (neighbors_indices.size() < 1)
 	{

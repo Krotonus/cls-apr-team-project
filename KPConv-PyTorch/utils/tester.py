@@ -631,7 +631,7 @@ class ModelTester:
 
         # Choose validation smoothing parameter (0 for no smothing, 0.99 for big smoothing)
         test_smooth = 0.5
-        last_min = -0.5
+        last_min = -0.005
         softmax = torch.nn.Softmax(1)
 
         # Number of classes including ignored labels
@@ -748,7 +748,7 @@ class ModelTester:
                     np.save(filepath, frame_probs_uint8)
 
                     # Save some prediction in ply format for visual
-                    if test_loader.dataset.set == 'validation':
+                    if test_loader.dataset.set == 'test':
 
                         # Insert false columns for ignored labels
                         frame_probs_uint8_bis = frame_probs_uint8.copy()
